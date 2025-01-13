@@ -1,0 +1,415 @@
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "fonction.h"
+// Définition des constantes
+#define MAX_LIGNE 1024
+#define FICHIER_COMPTES "comptes.csv"
+#define FICHIER_TRANSACTIONS "transactions.csv"
+#define MAX_COMPTES 500
+void afficherMenu() {
+    printf("\n=== Système de Gestion Bancaire ===\n");
+    printf("1. Créer un compte\n");
+    printf("2. Liste des comptes\n");
+    printf("3. Effectuer un dépôt\n");
+    printf("4. Effectuer un retrait\n");
+    printf("5. Effectuer un transfert\n");
+    printf("6. Rechercher un compte\n");
+    printf("7. Historique des transactions\n");
+    printf("8. Supprimer un compte\n");
+    printf("9. Trier les comptes\n");
+    printf("0. Quitter\n");
+    printf("Votre choix : ");
+}
+void creerCompte() {
+    Compte compte;
+    printf("Saisie des informations du compte :\n");
+    printf("Numéro de compte : ");
+    scanf("%s", compte.numeroCompte);
+    printf("Nom : ");
+    scanf("%s", compte.nom);
+    printf("Prénom : ");
+    scanf("%s", compte.prenom);
+    printf("Email : ");
+    scanf("%s", compte.email);
+    printf("Téléphone : ");
+    scanf("%s", compte.telephone);
+    getchar();
+    printf("Adresse : ");
+    fgets(compte.adresse, 100, stdin);
+    compte.adresse[strcspn(compte.adresse, "\n")] = 0;
+    compte.solde = 0.0;
+    compte.actif = 1;
+    FILE *fichier = fopen(FICHIER_COMPTES, "a");
+    if (fichier) {
+        fprintf(fichier, "%s,%s,%s,%s,%s,%s,%.2f,%d\n",
+                compte.numeroCompte, compte.prenom, compte.nom,
+                compte.email, compte.telephone, compte.adresse, compte.solde, compte.actif);
+        fclose(fichier);
+        printf("Compte créé avec succès!\n");
+    }
+}
+Compte* trouverCompte(const char* numeroCompte) {
+    FILE *fichier = fopen(FICHIER_COMPTES, "r");
+    if (!fichier) return NULL;
+    static Compte compte;
+    char ligne[MAX_LIGNE];
+    while (fgets(ligne, MAX_LIGNE, fichier)) {
+        sscanf(ligne, "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%lf,%d",
+               compte.numeroCompte, compte.prenom, compte.nom,
+               compte.email, compte.telephone, compte.adresse, &compte.solde, &compte.actif);
+
+        if (strcmp(compte.numeroCompte, numeroCompte) == 0) {
+            fclose(fichier);
+            return &compte;
+        }
+    }
+    fclose(fichier);
+    return NULL;
+}
+void mettreAJourCompte(Compte compte) {
+    FILE *fichier = fopen(FICHIER_COMPTES, "r");
+    FILE *temp = fopen("temp.csv", "w");
+    if (!fichier || !temp) return;
+
+    char ligne[MAX_LIGNE];
+    while (fgets(ligne, MAX_LIGNE, fichier)) {
+        Compte courant;
+        sscanf(ligne, "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%lf,%d",
+               courant.numeroCompte, courant.prenom, courant.nom,
+               courant.email, courant.telephone, courant.adresse, &courant.solde, &courant.actif);
+
+        if (strcmp(courant.numeroCompte, compte.numeroCompte) == 0) {
+            fprintf(temp, "%s,%s,%s,%s,%s,%s,%.2f,%d\n",
+                    compte.numeroCompte, compte.prenom, compte.nom,
+                    compte.email, compte.telephone, compte.adresse, compte.solde, compte.actif);
+        } else {
+            fprintf(temp, "%s", ligne);
+        }
+    }
+    fclose(fichier);
+    fclose(temp);
+    remove(FICHIER_COMPTES);
+    rename("temp.csv", FICHIER_COMPTES);
+}
+
+void effectuerDepot() {
+    char numeroCompte[20];
+    double montant;
+    printf("Numéro de compte : ");
+    scanf("%s", numeroCompte);
+    printf("Montant du dépôt : ");
+    scanf("%lf", &montant);
+
+    Compte* compte = trouverCompte(numeroCompte);
+    if (compte && compte->actif) {
+        compte->solde += montant;
+        mettreAJourCompte(*compte);
+        Transaction t;
+        strcpy(t.numeroCompte, numeroCompte);
+        strcpy(t.type, "DEPOT");
+        t.montant = montant;
+        strcpy(t.date, "2024-01-06"); // À remplacer par la date actuelle
+        strcpy(t.compteDestination, "");
+        enregistrerTransaction(t);
+
+        printf("Dépôt effectué avec succès!\n");
+    } else {
+        printf("Compte introuvable ou inactif!\n");
+    }
+}
+void effectuerRetrait() {
+    char numeroCompte[20];
+    double montant;
+    printf("Numéro de compte : ");
+    scanf("%s", numeroCompte);
+    printf("Montant du retrait : ");
+    scanf("%lf", &montant);
+
+    Compte* compte = trouverCompte(numeroCompte);
+    if (compte && compte->actif) {
+        if (compte->solde >= montant) {
+            compte->solde -= montant;
+            mettreAJourCompte(*compte);
+
+            Transaction t;
+            strcpy(t.numeroCompte, numeroCompte);
+            strcpy(t.type, "RETRAIT");
+            t.montant = montant;
+            strcpy(t.date, "2024-01-06");
+            strcpy(t.compteDestination, "");
+            enregistrerTransaction(t);
+
+            printf("Retrait effectué avec succès!\n");
+        } else {
+            printf("Solde insuffisant!\n");
+        }
+    } else {
+        printf("Compte introuvable ou inactif!\n");
+    }
+}
+void enregistrerTransaction(Transaction t) {
+    FILE *fichier = fopen(FICHIER_TRANSACTIONS, "a");
+    if (fichier) {
+        fprintf(fichier, "%s,%s,%.2f,%s,%s\n",
+                t.numeroCompte, t.type, t.montant, t.date, t.compteDestination);
+        fclose(fichier);
+    }
+}
+
+void afficherHistoriqueTransactions() {
+    char numeroCompte[20];
+    printf("Numéro de compte : ");
+    scanf("%s", numeroCompte);
+
+    FILE *fichier = fopen(FICHIER_TRANSACTIONS, "r");
+    if (!fichier) {
+        printf("Aucune transaction trouvée!\n");
+        return;
+    }
+
+    printf("\nHistorique des transactions :\n");
+    printf("Type\tMontant\tDate\tCompte destination\n");
+
+    char ligne[MAX_LIGNE];
+    Transaction t;
+    while (fgets(ligne, MAX_LIGNE, fichier)) {
+        sscanf(ligne, "%[^,],%[^,],%lf,%[^,],%s",
+               t.numeroCompte, t.type, &t.montant, t.date, t.compteDestination);
+
+        if (strcmp(t.numeroCompte, numeroCompte) == 0) {
+            printf("%s\t%.2f€\t%s\t%s\n", t.type, t.montant, t.date, t.compteDestination);
+        }
+    }
+    fclose(fichier);
+}
+void supprimerCompte() {
+    char numeroCompte[20];
+    printf("Numéro de compte à supprimer : ");
+    scanf("%s", numeroCompte);
+
+    FILE *fichier = fopen(FICHIER_COMPTES, "r");
+    FILE *temp = fopen("temp.csv", "w");
+    if (!fichier || !temp) {
+        printf("Erreur lors de l'ouverture des fichiers!\n");
+        return;
+    }
+    char ligne[MAX_LIGNE];
+    int trouve = 0;
+
+    while (fgets(ligne, MAX_LIGNE, fichier)) {
+        Compte compte;
+        sscanf(ligne, "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%lf,%d",
+               compte.numeroCompte, compte.prenom, compte.nom,
+               compte.email, compte.telephone, compte.adresse, &compte.solde, &compte.actif);
+
+        if (strcmp(compte.numeroCompte, numeroCompte) == 0) {
+            trouve = 1; // Compte trouvé, ne pas l'écrire dans le fichier temporaire
+            printf("Compte %s supprimé avec succès!\n", numeroCompte);
+        } else {
+            fprintf(temp, "%s", ligne); // Écrire le compte dans le fichier temporaire
+        }
+    }
+
+    fclose(fichier);
+    fclose(temp);
+
+    if (!trouve) {
+        printf("Erreur: Compte introuvable!\n");
+    } else {
+        remove(FICHIER_COMPTES); // Supprimer l'ancien fichier
+        rename("temp.csv", FICHIER_COMPTES); // Renommer le fichier temporaire
+    }
+}
+void listerComptes() {
+    FILE *fichier = fopen(FICHIER_COMPTES, "r");
+    if (!fichier) {
+        printf("Aucun compte trouvé!\n");
+        return;
+    }
+
+    printf("\nListe des comptes :\n");
+    printf("Numéro\tNom\tPrénom\tSolde\tEmail\tStatut\n");
+
+    char ligne[MAX_LIGNE];
+    Compte compte;
+    while (fgets(ligne, MAX_LIGNE, fichier)) {
+        sscanf(ligne, "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%lf,%d",
+               compte.numeroCompte, compte.prenom, compte.nom,
+               compte.email, compte.telephone, compte.adresse, &compte.solde, &compte.actif);
+
+        printf("%s\t%s\t%s\t%.2f€\t%s\t%s\n",
+               compte.numeroCompte, compte.nom, compte.prenom,
+               compte.solde, compte.email, compte.actif ? "Actif" : "Inactif");
+    }
+    fclose(fichier);
+}
+void effectuerTransfert() {
+    char compteSource[20], compteDestination[20];
+    double montant;
+
+    // Demande à l'utilisateur les informations nécessaires
+    printf("Compte source : ");
+    scanf("%s", compteSource);
+    printf("Compte destination : ");
+    scanf("%s", compteDestination);
+    printf("Montant du transfert : ");
+    scanf("%lf", &montant);
+
+    // Trouver les comptes source et destination
+    Compte* source = trouverCompte(compteSource);
+    Compte* destination = trouverCompte(compteDestination);
+
+    // Vérifier si les comptes existent et sont actifs
+    if (source && destination && source->actif && destination->actif) {
+        // Vérifier si le solde du compte source est suffisant
+        if (source->solde >= montant) {
+            // Soustraire le montant du compte source
+            source->solde -= montant;
+            // Ajouter le montant au compte destination
+            destination->solde += montant;
+
+            // Mettre à jour les comptes dans le fichier
+            mettreAJourComptetransfert(*source);
+            mettreAJourComptetransfert(*destination);
+
+            // Enregistrer la transaction
+            Transaction t;
+            strcpy(t.numeroCompte, compteSource);
+            strcpy(t.type, "TRANSFERT");
+            t.montant = montant;
+            strcpy(t.date, "2024-01-06"); // Remplacer par la date actuelle si nécessaire
+            strcpy(t.compteDestination, compteDestination);
+            enregistrerTransaction(t);
+
+            printf("Transfert effectué avec succès!\n");
+        } else {
+            printf("Solde insuffisant dans le compte source!\n");
+        }
+    } else {
+        printf("Compte(s) introuvable(s) ou inactif(s)!\n");
+    }
+}
+
+void rechercherCompte() {
+    char recherche[50];
+    printf("Rechercher (numéro ou nom) : ");
+    scanf("%s", recherche);
+
+    FILE *fichier = fopen(FICHIER_COMPTES, "r");
+    if (!fichier) {
+        printf("Aucun compte trouvé!\n");
+        return;
+    }
+    int trouve = 0;
+    char ligne[MAX_LIGNE];
+    Compte compte;
+
+    printf("\nRésultats de la recherche :\n");
+    printf("Numéro\tNom\tPrénom\tSolde\tEmail\tStatut\n");
+
+    while (fgets(ligne, MAX_LIGNE, fichier)) {
+        sscanf(ligne, "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%lf,%d",
+               compte.numeroCompte, compte.prenom, compte.nom,
+               compte.email, compte.telephone, compte.adresse, &compte.solde, &compte.actif);
+
+        if (strcmp(compte.numeroCompte, recherche) == 0 ||
+            strcmp(compte.nom, recherche) == 0) {
+            printf("%s\t%s\t%s\t%.2f€\t%s\t%s\n",
+                   compte.numeroCompte, compte.nom, compte.prenom,
+                   compte.solde, compte.email, compte.actif ? "Actif" : "Inactif");
+            trouve = 1;
+        }
+    }
+    if (!trouve) {
+        printf("Aucun compte trouvé!\n");
+    }
+    fclose(fichier);
+}
+// Fonction pour trier les comptes par nom ou par solde
+void trierComptes() {
+    FILE *fichier = fopen(FICHIER_COMPTES, "r");
+    if (!fichier) {
+        printf("Aucun compte trouvé!\n");
+        return;
+    }
+    Compte comptes[MAX_COMPTES];
+    int count = 0;
+    // Lire les comptes dans le tableau
+    while (fgets(comptes[count].numeroCompte, MAX_LIGNE, fichier) && count < MAX_COMPTES) {
+        sscanf(comptes[count].numeroCompte, "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%lf,%d",
+               comptes[count].numeroCompte, comptes[count].prenom, comptes[count].nom,
+               comptes[count].email, comptes[count].telephone, comptes[count].adresse,
+               &comptes[count].solde, &comptes[count].actif);
+        count++;
+    }
+    fclose(fichier);
+
+    int choix;
+    printf("Trier par :\n");
+    printf("1. Nom\n");
+    printf("2. Solde\n");
+    printf("Votre choix : ");
+    scanf("%d", &choix);
+
+    // Tri à bulles
+    for (int i = 0; i < count - 1; i++) {
+        for (int j = 0; j < count - i - 1; j++) {
+            int swap = 0;
+            if (choix == 1) { // Trier par nom
+                if (strcmp(comptes[j].nom, comptes[j + 1].nom) > 0) {
+                    swap = 1;
+                }
+            } else if (choix == 2) { // Trier par solde
+                if (comptes[j].solde > comptes[j + 1].solde) {
+                    swap = 1;
+                }
+            }
+            // Échanger les comptes si nécessaire
+            if (swap) {
+                Compte temp = comptes[j];
+                comptes[j] = comptes[j + 1];
+                comptes[j + 1] = temp;
+            }
+        }
+    }
+    // Afficher les comptes triés
+    printf("\nListe des comptes triés :\n");
+    printf("Numéro\tNom\tPrénom\tSolde\tEmail\tStatut\n");
+    for (int i = 0; i < count; i++) {
+        printf("%s\t%s\t%s\t%.2f€\t%s\t%s\n",
+               comptes[i].numeroCompte, comptes[i].nom, comptes[i].prenom,
+               comptes[i].solde, comptes[i].email, comptes[i].actif ? "Actif" : "Inactif");
+    }
+}
+void mettreAJourComptetransfert(Compte compte) {
+    FILE *fichier = fopen(FICHIER_COMPTES, "r");
+    FILE *temp = fopen("temp.csv", "w");
+    if (!fichier || !temp) {
+        printf("Erreur lors de l'ouverture des fichiers!\n");
+        return;
+    }
+    char ligne[MAX_LIGNE];
+    while (fgets(ligne, MAX_LIGNE, fichier)) {
+        Compte courant;
+        sscanf(ligne, "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%lf,%d",
+               courant.numeroCompte, courant.prenom, courant.nom,
+               courant.email, courant.telephone, courant.adresse, &courant.solde, &courant.actif);
+        // Si le compte courant correspond au compte à mettre à jour
+        if (strcmp(courant.numeroCompte, compte.numeroCompte) == 0) {
+            // Écrire le compte mis à jour dans le fichier temporaire
+            fprintf(temp, "%s,%s,%s,%s,%s,%s,%.2f,%d\n",
+                    compte.numeroCompte, compte.prenom, compte.nom,
+                    compte.email, compte.telephone, compte.adresse, compte.solde, compte.actif);
+        } else {
+            // Écrire le compte non modifié dans le fichier temporaire
+            fprintf(temp, "%s", ligne);
+        }
+    }
+
+    fclose(fichier);
+    fclose(temp);
+    remove(FICHIER_COMPTES); // Supprimer l'ancien fichier
+    rename("temp.csv", FICHIER_COMPTES); // Renommer le fichier temporaire
+}
